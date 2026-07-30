@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SDR Scanner — Springfield</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0a0e0f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#0a0e0f; --surface:#111619; --surface2:#181e21; --border:#1e2a2e;
+  --accent:#00e5ff; --green:#00ff88; --red:#ff3d3d; --yellow:#ffd60a; --orange:#ff6b35;
+  --text:#cdd9dc; --muted:#4a6068;
+  --mono:ui-monospace,'Cascadia Mono','Roboto Mono',Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;
+  border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:50;gap:10px;flex-wrap:wrap}
+.logo{font-family:var(--mono);font-size:15px;color:var(--accent);letter-spacing:2px;display:flex;align-items:center;gap:8px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse 1.2s infinite}
+.dot.on{background:var(--green)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.connect-btn{padding:9px 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);
+  color:var(--text);font-size:13px;cursor:pointer;font-family:var(--sans)}
+.connect-btn:hover{border-color:var(--accent);color:var(--accent)}
+.connect-btn.on{border-color:var(--green);color:var(--green)}
+.banner{padding:10px 16px;background:#331111;color:#ff9d9d;font-size:13px;display:none}
+#offlinePill{font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:5px 9px;border-radius:20px;
+  border:1px solid var(--border);color:var(--muted);white-space:nowrap}
+#offlinePill.ready{border-color:var(--green);color:var(--green)}
+#offlinePill.err{border-color:var(--orange);color:var(--orange)}
+.app{display:grid;grid-template-columns:340px 1fr;min-height:calc(100vh - 55px)}
+@media(max-width:760px){.app{grid-template-columns:1fr}}
+.side{background:var(--surface);border-right:1px solid var(--border)}
+.sec{padding:14px 16px;border-bottom:1px solid var(--border)}
+.lbl{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px}
+/* VFO */
+.vfo{font-family:var(--mono);text-align:center;padding:6px 0 2px}
+.vfo-freq{font-size:34px;color:var(--accent);letter-spacing:1px}
+.vfo-freq small{font-size:14px;color:var(--muted)}
+.vfo-name{font-size:13px;color:var(--text);margin-top:2px;min-height:18px}
+.vfo-mode{font-size:11px;color:var(--orange);margin-top:2px}
+.meter{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-top:10px}
+.meter-fill{height:100%;width:0;background:linear-gradient(90deg,var(--green),var(--yellow) 70%,var(--red));transition:width .06s}
+.meter-lbl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px}
+.rx-row{display:flex;align-items:center;gap:8px;margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.rx-dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.rx-dot.rx{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse .6s infinite}
+.rx-txt.rx{color:var(--green)}
+/* sliders */
+.sl{margin-bottom:12px}
+.sl label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px}
+.sl label span{font-family:var(--mono);color:var(--accent);font-size:11px}
+input[type=range]{-webkit-appearance:none;width:100%;height:4px;background:var(--border);border-radius:2px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;background:var(--accent);border-radius:50%;cursor:pointer}
+.chk-row{display:flex;align-items:center;justify-content:space-between;font-size:12px;padding:4px 0}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent)}
+/* buttons */
+.btn{padding:8px 14px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);
+  font-size:12px;cursor:pointer}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{border-color:var(--accent);color:var(--accent)}
+.btn.scan-on{border-color:var(--green);color:var(--green);background:rgba(0,255,136,.07)}
+.btn.danger:hover{border-color:var(--red);color:var(--red)}
+/* channel list */
+.chlist{max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.chlist::-webkit-scrollbar{width:4px}
+.chlist::-webkit-scrollbar-thumb{background:var(--border)}
+.ch{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:5px;border:1px solid transparent;cursor:pointer;font-size:12px}
+.ch:hover{background:var(--surface2)}
+.ch.sel{border-color:var(--accent);background:rgba(0,229,255,.06)}
+.ch.active-rx{border-color:var(--green)}
+.ch-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch-freq{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.ch-mode{font-family:var(--mono);font-size:9px;color:var(--orange);width:28px}
+.ch-del{color:var(--muted);border:none;background:none;cursor:pointer;font-size:12px;padding:2px 4px}
+.ch-del:hover{color:var(--red)}
+.addform{display:grid;grid-template-columns:1fr 80px 60px auto;gap:6px;margin-top:8px}
+.addform input,.addform select{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);
+  padding:7px 8px;font-size:12px;font-family:var(--sans);min-width:0}
+/* main */
+.main{display:flex;flex-direction:column}
+canvas{display:block;width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:4px}
+.main-head{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.main-title{font-size:13px;font-weight:600;display:flex;gap:8px;align-items:center}
+.count{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:2px 8px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.txlist{flex:1;overflow-y:auto;padding:10px 18px;display:flex;flex-direction:column;gap:8px;min-height:200px}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:10px;color:var(--muted);text-align:center}
+.empty-i{font-size:42px;opacity:.3}
+.txc{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:12px;animation:slidein .2s}
+@keyframes slidein{from{opacity:0;transform:translateY(-6px)}to{opacity:1}}
+.txc.playing{border-color:var(--accent)}
+.txn{font-family:var(--mono);font-size:11px;color:var(--muted);min-width:26px;text-align:right}
+.txi{flex:1;min-width:0}
+.txt1{font-family:var(--mono);font-size:12px;color:var(--accent)}
+.txt2{font-size:11px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
+.cb{width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:var(--surface2);color:var(--muted);
+  cursor:pointer;font-size:13px;flex-shrink:0}
+.cb:hover{border-color:var(--accent);color:var(--accent)}
+details{padding:12px 18px;border-top:1px solid var(--border);font-size:13px;line-height:1.7;color:var(--muted)}
+details summary{cursor:pointer;color:var(--text);font-weight:600;font-size:13px}
+details b{color:var(--accent)}
+code{font-family:var(--mono);background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:12px}
+.statline{font-family:var(--mono);font-size:10px;color:var(--muted);padding:6px 16px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><div class="dot" id="hdot"></div>SDR SCANNER</div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span id="offlinePill" title="Offline availability">⏳ caching…</span>
+    <button class="btn" id="installBtn" onclick="doInstall()" style="display:none">⬇ Install app</button>
+    <button class="btn" id="scanBtn" onclick="toggleScan()" disabled>▶ Scan</button>
+    <button class="connect-btn" id="connBtn" onclick="toggleConnect()">🔌 Connect RTL-SDR</button>
+  </div>
+</header>
+<div class="banner" id="banner"></div>
+
+<div class="app">
+<aside class="side">
+
+  <div class="sec">
+    <div class="vfo">
+      <div class="vfo-freq" id="vfoFreq">---.------<small> MHz</small></div>
+      <div class="vfo-name" id="vfoName">Not connected</div>
+      <div class="vfo-mode" id="vfoMode"></div>
+    </div>
+    <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+    <div class="meter-lbl"><span>SIGNAL</span><span id="meterDb">— dB</span></div>
+    <div class="rx-row">
+      <div class="rx-dot" id="rxDot"></div>
+      <span class="rx-txt" id="rxTxt">IDLE</span>
+      <span style="margin-left:auto" id="rxTimer"></span>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="lbl">Tuning &amp; Audio</div>
+    <div class="sl"><label>Squelch <span id="sqV">-58 dB</span></label>
+      <input type="range" id="sqS" min="-90" max="-20" value="-58" oninput="setSq(this.value)"></div>
+    <div class="sl"><label>Volume <span id="volV">80%</span></label>
+      <input type="range" id="volS" min="0" max="150" value="80" oninput="setVol(this.value)"></div>
+    <div class="sl"><label>RF Gain <span id="gV">idx 13</span></label>
+      <input type="range" id="gS" min="0" max="15" value="13" oninput="setGainIdx(this.value)"></div>
+    <div class="chk-row"><span>Auto RF gain (AGC)</span><input type="checkbox" id="agcC" onchange="setAgc(this.checked)"></div>
+    <div class="chk-row"><span>Record transmissions</span><input type="checkbox" id="recC" checked></div>
+  </div>
+
+  <div class="sec">
+    <div class="lbl">Channels <span style="float:right;font-size:9px">✓ = in scan</span></div>
+    <div class="chlist" id="chlist"></div>
+    <div class="addform">
+      <input id="afName" placeholder="Name">
+      <input id="afFreq" placeholder="MHz" inputmode="decimal">
+      <select id="afMode"><option>NFM</option><option>AM</option><option>WFM</option></select>
+      <button class="btn" onclick="addChannel()">＋</button>
+    </div>
+  </div>
+
+</aside>
+
+<main class="main">
+  <div class="sec" style="border-bottom:1px solid var(--border)">
+    <div class="lbl">Spectrum (±128 kHz around channel)</div>
+    <canvas id="spec" height="90"></canvas>
+  </div>
+
+  <div class="main-head">
+    <div class="main-title">Transmission History <span class="count" id="txCount">0</span></div>
+    <button class="btn danger" onclick="clearHist()">Clear All</button>
+  </div>
+  <div class="txlist" id="txlist">
+    <div class="empty" id="emptyS"><div class="empty-i">📡</div>
+      <div>No transmissions yet</div>
+      <div style="font-size:12px;max-width:300px">Plug in the RTL-SDR V3, tap Connect, pick a channel or hit Scan. Every transmission that breaks squelch is recorded here.</div>
+    </div>
+  </div>
+
+  <details>
+    <summary>📖 Setup &amp; Help</summary>
+    <p style="margin-top:8px"><b>PC (Windows):</b> Plug in the V3 → open this file in <b>Chrome or Edge</b> → Connect → pick "RTL2838…" / "Blog V3". If Windows grabbed the dongle with a DVB driver, run Zadig once and install <code>WinUSB</code> on "Bulk-In, Interface 0".</p>
+    <p><b>Android:</b> Plug the V3 into your phone with a <b>USB-C OTG adapter</b> → open this file in Chrome → Connect → allow the USB device. Attach the antenna and extend it (~19in for VHF).</p>
+    <p><b>Offline:</b> This file is fully self-contained — no internet needed once it's saved on your device.</p>
+    <p><b>What it can hear:</b> Analog only — your EMS/fire channels, Skywarn, NOAA, FRS, airband (AM), FM broadcast (WFM). <b>It cannot decode MOSWIN P25 / DMR / NXDN</b> (Springfield PD, Sheriff, Fire Ops, Willard buses, OTC). For those, use free <b>SDRTrunk</b> on your PC — also works offline.</p>
+    <p><b>Tips:</b> Squelch around −55 to −60 dB is a good start. If audio is weak, raise RF Gain. If strong signals distort, lower it. ✓ next to a channel includes it in scanning; NOAA/ATIS are unticked by default since they never stop transmitting.</p>
+  </details>
+  <div class="statline" id="stat">idle</div>
+</main>
+</div>
+
+<script>
+'use strict';
+/* ════════════════════════════════════════════════════════════════════
+   RTL-SDR (RTL2832U + R820T/R860) WebUSB driver
+   Ported/condensed from librtlsdr. Analog RX only.
+   ════════════════════════════════════════════════════════════════════ */
+const DEMODB=0,USBB=1,SYSB=2,IICB=6;
+const USB_SYSCTL=0x2000,USB_EPA_CTL=0x2148,USB_EPA_MAXPKT=0x2158;
+const DEMOD_CTL=0x3000,DEMOD_CTL_1=0x300b;
+const R820T_ADDR=0x34,R828D_ADDR=0x74,XTAL=28800000,IF_FREQ=3570000;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+class RTL{
+  constructor(dev){this.d=dev;this.q=Promise.resolve();}
+  lock(fn){this.q=this.q.then(fn,fn);return this.q;}
+  async wr(block,addr,val,len){
+    const b=new Uint8Array(len);
+    if(len===1)b[0]=val&0xff;else{b[0]=val>>8;b[1]=val&0xff;}
+    await this.d.controlTransferOut({requestType:'vendor',recipient:'device',request:0,
+      value:addr,index:(block<<8)|0x10},b);
+  }
+  async rd(block,addr,len){
+    const r=await this.d.controlTransferIn({requestType:'vendor',recipient:'device',request:0,
+      value:addr,index:block<<8},len);
+    return new Uint8Array(r.data.buffer);
+  }
+  async dmW(page,addr,val,len){
+    const b=new Uint8Array(len);
+    if(len===1)b[0]=val&0xff;else{b[0]=val>>8;b[1]=val&0xff;}
+    await this.d.controlTransferOut({requestType:'vendor',recipient:'device',request:0,
+      value:(addr<<8)|0x20,index:0x10|page},b);
+    await this.d.controlTransferIn({requestType:'vendor',recipient:'device',request:0,
+      value:(0x01<<8)|0x20,index:0x0a},1); // dummy read per librtlsdr
+  }
+  async i2cW(addr,bytes){
+    await this.d.controlTransferOut({requestType:'vendor',recipient:'device',request:0,
+      value:addr,index:(IICB<<8)|0x10},new Uint8Array(bytes));
+  }
+  async i2cR(addr,len){
+    const r=await this.d.controlTransferIn({requestType:'vendor',recipient:'device',request:0,
+      value:addr,index:IICB<<8},len);
+    return new Uint8Array(r.data.buffer);
+  }
+  async rep(on){await this.dmW(1,0x01,on?0x18:0x10,1);}
+  async initBaseband(){
+    await this.wr(USBB,USB_SYSCTL,0x09,1);
+    await this.wr(USBB,USB_EPA_MAXPKT,0x0002,2);
+    await this.wr(USBB,USB_EPA_CTL,0x1002,2);
+    await this.wr(SYSB,DEMOD_CTL_1,0x22,1);
+    await this.wr(SYSB,DEMOD_CTL,0xe8,1);
+    await this.dmW(1,0x01,0x14,1);
+    await this.dmW(1,0x01,0x10,1);
+    await this.dmW(1,0x15,0x00,1);
+    for(let i=0;i<6;i++)await this.dmW(1,0x16+i,0x00,1);
+    // default FIR
+    const fir=[-54,-36,-41,-40,-32,-14,14,53,101,156,215,273,327,372,404,421];
+    const fb=new Uint8Array(20);
+    for(let i=0;i<8;i++)fb[i]=fir[i]&0xff;
+    for(let i=0;i<8;i+=2){
+      const v0=fir[8+i],v1=fir[8+i+1];
+      fb[8+i*3/2]=(v0>>4)&0xff;
+      fb[8+i*3/2+1]=((v0<<4)|((v1>>8)&0x0f))&0xff;
+      fb[8+i*3/2+2]=v1&0xff;
+    }
+    for(let i=0;i<20;i++)await this.dmW(1,0x1c+i,fb[i],1);
+    await this.dmW(0,0x19,0x05,1);
+    await this.dmW(1,0x93,0xf0,1);
+    await this.dmW(1,0x94,0x0f,1);
+    await this.dmW(1,0x11,0x00,1);
+    await this.dmW(1,0x04,0x00,1);
+    await this.dmW(0,0x61,0x60,1);
+    await this.dmW(0,0x06,0x80,1);
+    await this.dmW(1,0xb1,0x1b,1);
+    await this.dmW(0,0x0d,0x83,1);
+  }
+  async setIF(freq){
+    let f=Math.floor(freq*Math.pow(2,22)/XTAL)* -1;
+    f&=0x3fffff;
+    await this.dmW(1,0x19,(f>>16)&0x3f,1);
+    await this.dmW(1,0x1a,(f>>8)&0xff,1);
+    await this.dmW(1,0x1b,f&0xff,1);
+  }
+  async setRate(rate){
+    let r=Math.floor(XTAL*Math.pow(2,22)/rate)&0x0ffffffc;
+    await this.dmW(1,0x9f,(r>>16)&0xffff,2);
+    await this.dmW(1,0xa1,r&0xffff,2);
+    await this.dmW(1,0x3e,0,1); // ppm 0
+    await this.dmW(1,0x3f,0,1);
+    await this.dmW(1,0x01,0x14,1);
+    await this.dmW(1,0x01,0x10,1);
+  }
+  async resetBuf(){
+    await this.wr(USBB,USB_EPA_CTL,0x1002,2);
+    await this.wr(USBB,USB_EPA_CTL,0x0000,2);
+  }
+}
+
+/* ─── R820T / R860 tuner ─── */
+const INIT_ARR=[0x83,0x32,0x75,0xc0,0x40,0xd6,0x6c,0xf5,0x63,0x75,0x68,0x6c,
+  0x83,0x80,0x00,0x0f,0x00,0xc0,0x30,0x48,0xcc,0x60,0x00,0x54,0xae,0x4a,0xc0];
+const RANGES=[ // [MHz, open_d, rf_mux_ploy, tf_c]
+  [0,0x08,0x02,0xdf],[50,0x08,0x02,0xbe],[55,0x08,0x02,0x8b],[60,0x08,0x02,0x7b],
+  [65,0x08,0x02,0x69],[70,0x08,0x02,0x58],[75,0x00,0x02,0x44],[80,0x00,0x02,0x44],
+  [90,0x00,0x02,0x34],[100,0x00,0x02,0x34],[110,0x00,0x02,0x24],[120,0x00,0x02,0x24],
+  [140,0x00,0x02,0x14],[180,0x00,0x02,0x13],[220,0x00,0x02,0x13],[250,0x00,0x02,0x11],
+  [280,0x00,0x02,0x00],[310,0x00,0x41,0x00],[450,0x00,0x41,0x00],
+  [588,0x00,0x40,0x00],[650,0x00,0x40,0x00]];
+const bitrev=b=>{b=((b&0xf0)>>4)|((b&0x0f)<<4);b=((b&0xcc)>>2)|((b&0x33)<<2);
+  return((b&0xaa)>>1)|((b&0x55)<<1);};
+
+class R820T{
+  constructor(rtl,addr){this.r=rtl;this.a=addr;this.regs=INIT_ARR.slice();this.input=0;}
+  async wRaw(reg,vals){
+    for(let o=0;o<vals.length;o+=7){
+      const chunk=vals.slice(o,o+7);
+      await this.r.i2cW(this.a,[reg+o,...chunk]);
+    }
+    for(let i=0;i<vals.length;i++)this.regs[reg+i-5]=vals[i];
+  }
+  async wm(reg,val,mask){
+    const cur=this.regs[reg-5];
+    const nv=(cur&~mask)|(val&mask);
+    await this.wRaw(reg,[nv]);
+  }
+  async read(len){
+    await this.r.i2cW(this.a,[0x00]);
+    const raw=await this.r.i2cR(this.a,len);
+    return Array.from(raw,bitrev);
+  }
+  async init(){
+    await this.wRaw(0x05,INIT_ARR);
+    // set_tv_standard (DVB-T 6MHz profile)
+    await this.wm(0x0c,0x00,0x0f);
+    await this.wm(0x13,49,0x3f);
+    await this.wm(0x1d,0x00,0x38); await sleep(2);
+    // filter calibration ×2
+    for(let i=0;i<2;i++){
+      await this.wm(0x0b,0x6b,0x60);
+      await this.wm(0x0f,0x04,0x04);
+      await this.wm(0x10,0x00,0x03);
+      await this.setPll(56000000);
+      await this.wm(0x0b,0x10,0x10); await sleep(2);
+      await this.wm(0x0b,0x00,0x10);
+      await this.wm(0x0f,0x00,0x04);
+      const d=await this.read(5);
+      this.filCal=d[4]&0x0f;
+      if(this.filCal&&this.filCal!==0x0f)break;
+      this.filCal=0;
+    }
+    await this.wm(0x0a,0x10|this.filCal,0x1f);
+    await this.wm(0x0b,0x6b,0xef);
+    await this.wm(0x07,0x00,0x80);
+    await this.wm(0x06,0x10,0x30);
+    await this.wm(0x1e,0x60,0x60);
+    await this.wm(0x05,0x00,0x80);
+    await this.wm(0x1f,0x00,0x80);
+    await this.wm(0x0f,0x00,0x80);
+    await this.wm(0x19,0x60,0x60);
+    // sysfreq_sel (DVB-T defaults)
+    await this.wm(0x1d,0xe5,0xc7);
+    await this.wm(0x1c,0x24,0xf8);
+    await this.wRaw(0x0d,[0x53]);
+    await this.wRaw(0x0e,[0x75]);
+    await this.wm(0x05,0x00,0x60); this.input=0;
+    await this.wm(0x06,0x00,0x08);
+    await this.wm(0x11,0x38,0x38);
+    await this.wm(0x17,0x30,0x30);
+    await this.wm(0x0a,0x40,0x60);
+    await this.wm(0x1d,0,0x38);
+    await this.wm(0x1a,0x30,0x30);
+  }
+  async setMux(freq){
+    const mhz=freq/1e6;
+    let rg=RANGES[0];
+    for(const r of RANGES){if(mhz>=r[0])rg=r;else break;}
+    await this.wm(0x17,rg[1],0x08);
+    await this.wm(0x1a,rg[2],0xc3);
+    await this.wRaw(0x1b,[rg[3]]);
+    await this.wm(0x10,0x00,0x0b); // xtal cap 0p, high-cap mode
+    await this.wm(0x08,0x00,0x3f);
+    await this.wm(0x09,0x00,0x3f);
+  }
+  async setPll(freq){
+    const refKhz=28800;
+    const fKhz=Math.floor((freq+500)/1000);
+    await this.wm(0x10,0x00,0x10);        // refdiv2 off
+    await this.wm(0x1a,0x00,0x0c);        // pll autotune 128kHz
+    await this.wm(0x12,0x80,0xe0);        // VCO current 100
+    const vcoMin=1770000,vcoMax=3540000;
+    let mixDiv=2,divNum=0;
+    while(mixDiv<=64){
+      if(fKhz*mixDiv>=vcoMin&&fKhz*mixDiv<vcoMax){
+        let db=mixDiv;divNum=0;
+        while(db>2){db>>=1;divNum++;}
+        break;
+      }
+      mixDiv<<=1;
+    }
+    const d=await this.read(5);
+    const vft=(d[4]&0x30)>>4;
+    if(vft>2)divNum--;else if(vft<2)divNum++;
+    if(divNum<0)divNum=0;
+    await this.wm(0x10,(divNum<<5)&0xe0,0xe0);
+    const vco=freq*mixDiv;
+    const nint=Math.floor(vco/(2*XTAL));
+    let vcoFra=Math.floor((vco-2*XTAL*nint)/1000);
+    const ni=Math.floor((nint-13)/4),si=nint-4*ni-13;
+    await this.wRaw(0x14,[(ni+(si<<6))&0xff]);
+    await this.wm(0x12,vcoFra?0x00:0x08,0x08);
+    let nSdm=2,sdm=0;
+    while(vcoFra>1){
+      if(vcoFra>Math.floor(2*refKhz/nSdm)){
+        sdm+=Math.floor(32768/(nSdm/2));
+        vcoFra-=Math.floor(2*refKhz/nSdm);
+        if(nSdm>=0x8000)break;
+      }
+      nSdm<<=1;
+    }
+    await this.wRaw(0x16,[(sdm>>8)&0xff]);
+    await this.wRaw(0x15,[sdm&0xff]);
+    for(let i=0;i<2;i++){
+      await sleep(2);
+      const dd=await this.read(3);
+      if(dd[2]&0x40)break;
+      if(!i)await this.wm(0x12,0x60,0xe0);  // more VCO current
+    }
+    await this.wm(0x1a,0x08,0x08); // autotune 8kHz
+  }
+  async setFreq(freq){
+    const lo=freq+IF_FREQ;
+    const air=(freq>345e6)?0x00:0x60;
+    if(air!==this.input){this.input=air;await this.wm(0x05,air,0x60);}
+    await this.setMux(lo);
+    await this.setPll(lo);
+  }
+  async gainManual(idx){
+    await this.wm(0x05,0x10,0x10);
+    await this.wm(0x07,0x00,0x10);
+    await this.wm(0x0c,0x08,0x9f);
+    await this.wm(0x05,idx&0x0f,0x0f);
+    await this.wm(0x07,idx&0x0f,0x0f);
+  }
+  async gainAuto(){
+    await this.wm(0x05,0x00,0x10);
+    await this.wm(0x07,0x10,0x10);
+    await this.wm(0x0c,0x0b,0x9f);
+  }
+}
+
+/* ════════════════ DSP ════════════════ */
+const FS=1024000, CHRATE=64000;
+function lpTaps(fs,cut,n){
+  const t=new Float32Array(n),m=(n-1)/2;let s=0;
+  for(let i=0;i<n;i++){
+    const x=i-m;
+    let v=x===0?2*cut/fs:Math.sin(2*Math.PI*cut*x/fs)/(Math.PI*x);
+    v*=0.54-0.46*Math.cos(2*Math.PI*i/(n-1));
+    t[i]=v;s+=v;
+  }
+  for(let i=0;i<n;i++)t[i]/=s;
+  return t;
+}
+class DecC{ // complex FIR decimator
+  constructor(taps,d){this.t=taps;this.d=d;this.hi=new Float32Array(taps.length-1);
+    this.hq=new Float32Array(taps.length-1);this.ph=0;}
+  proc(I,Q,n){
+    const T=this.t,L=T.length,d=this.d;
+    const bi=new Float32Array(this.hi.length+n),bq=new Float32Array(this.hq.length+n);
+    bi.set(this.hi);bq.set(this.hq);bi.set(I.subarray(0,n),this.hi.length);bq.set(Q.subarray(0,n),this.hq.length);
+    const avail=bi.length-L+1;
+    const cnt=Math.max(0,Math.ceil((avail-this.ph)/d));
+    const oi=new Float32Array(cnt),oq=new Float32Array(cnt);
+    let k=this.ph,o=0;
+    for(;k<avail;k+=d,o++){
+      let si=0,sq=0;
+      for(let j=0;j<L;j++){si+=T[j]*bi[k+j];sq+=T[j]*bq[k+j];}
+      oi[o]=si;oq[o]=sq;
+    }
+    this.ph=k-avail;
+    this.hi=bi.slice(bi.length-(L-1));this.hq=bq.slice(bq.length-(L-1));
+    return[oi.subarray(0,o),oq.subarray(0,o)];
+  }
+}
+class DecR{ // real FIR decimator
+  constructor(taps,d){this.t=taps;this.d=d;this.h=new Float32Array(taps.length-1);this.ph=0;}
+  proc(X){
+    const T=this.t,L=T.length,d=this.d;
+    const b=new Float32Array(this.h.length+X.length);
+    b.set(this.h);b.set(X,this.h.length);
+    const avail=b.length-L+1;
+    const cnt=Math.max(0,Math.ceil((avail-this.ph)/d));
+    const out=new Float32Array(cnt);
+    let k=this.ph,o=0;
+    for(;k<avail;k+=d,o++){
+      let s=0;for(let j=0;j<L;j++)s+=T[j]*b[k+j];
+      out[o]=s;
+    }
+    this.ph=k-avail;
+    this.h=b.slice(b.length-(L-1));
+    return out.subarray(0,o);
+  }
+}
+
+/* FFT for spectrum (radix-2, 512pt) */
+const FFTN=512;
+const fftRe=new Float32Array(FFTN),fftIm=new Float32Array(FFTN),specDb=new Float32Array(FFTN);
+function fft(re,im){
+  const n=re.length;
+  for(let i=1,j=0;i<n;i++){
+    let bit=n>>1;
+    for(;j&bit;bit>>=1)j^=bit;
+    j^=bit;
+    if(i<j){let t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t;}
+  }
+  for(let len=2;len<=n;len<<=1){
+    const ang=-2*Math.PI/len,wr=Math.cos(ang),wi=Math.sin(ang);
+    for(let i=0;i<n;i+=len){
+      let cr=1,ci=0;
+      for(let j=0;j<len/2;j++){
+        const ur=re[i+j],ui=im[i+j];
+        const vr=re[i+j+len/2]*cr-im[i+j+len/2]*ci;
+        const vi=re[i+j+len/2]*ci+im[i+j+len/2]*cr;
+        re[i+j]=ur+vr;im[i+j]=ui+vi;
+        re[i+j+len/2]=ur-vr;im[i+j+len/2]=ui-vi;
+        const ncr=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=ncr;
+      }
+    }
+  }
+}
+
+/* ════════════════ App state ════════════════ */
+const DEFAULT_CH=[
+ {n:'Greene F',f:154.400,m:'NFM',s:1},{n:'LECMS',f:155.205,m:'NFM',s:1},
+ {n:'MercyEMS',f:155.235,m:'NFM',s:1},{n:'CoxEMS Ops',f:155.280,m:'NFM',s:1},
+ {n:'AirCare',f:155.265,m:'NFM',s:1},{n:'HEAR 340',f:155.340,m:'NFM',s:1},
+ {n:'MercyTrn',f:159.120,m:'NFM',s:1},{n:'Lifeline',f:453.4875,m:'NFM',s:1},
+ {n:'AirCareU',f:463.100,m:'NFM',s:1},{n:'Skywarn',f:145.490,m:'NFM',s:1},
+ {n:'2M Call',f:146.520,m:'NFM',s:1},{n:'70cm Call',f:446.000,m:'NFM',s:0},
+ {n:'FRS 22',f:462.725,m:'NFM',s:0},
+ {n:'NOAA 1',f:162.400,m:'NFM',s:0},{n:'NOAA 2',f:162.425,m:'NFM',s:0},
+ {n:'NOAA 3',f:162.450,m:'NFM',s:0},{n:'NOAA 4',f:162.475,m:'NFM',s:0},
+ {n:'NOAA 5',f:162.500,m:'NFM',s:0},{n:'NOAA 6',f:162.525,m:'NFM',s:0},
+ {n:'NOAA 7',f:162.550,m:'NFM',s:0},
+ {n:'SGF Tower',f:119.900,m:'AM',s:0},{n:'SGF Ground',f:121.900,m:'AM',s:0},
+ {n:'SGF ATIS',f:135.120,m:'AM',s:0}
+];
+let channels=JSON.parse(localStorage.getItem('sdr.channels')||'null')||DEFAULT_CH;
+let usb=null,rtl=null,tuner=null,streaming=false;
+let curCh=0, actx=null, ring=null, ringW=0, ringR=0;
+let sq=-58, vol=0.8, gainIdx=13, agc=false;
+let sigDb=-120, gateOpen=false, gateT=0, lastAbove=0;
+let scanOn=false, scanIdx=0, scanState='idle', scanT=0;
+let recBuf=[], recStart=0, txs=[], txN=0, curAudio=null;
+let dsp=null;
+
+function buildDsp(mode){
+  const d={mode};
+  if(mode==='WFM'){
+    d.s1=new DecC(lpTaps(FS,110000,33),4);         // 256k
+    d.aud=new DecR(lpTaps(256000,15000,49),4);     // 64k audio
+    d.demRate=256000;
+  }else{
+    d.s1=new DecC(lpTaps(FS,90000,33),4);          // 256k
+    d.s2=new DecC(lpTaps(256000,8000,49),4);       // 64k channel
+    d.aud=new DecR(lpTaps(64000,4200,49),1);
+    d.demRate=64000;
+  }
+  d.pi=0;d.pq=0;d.dc=0;d.de=0;
+  return d;
+}
+
+function processIQ(bytes){
+  const n=bytes.length>>1;
+  const I=new Float32Array(n),Q=new Float32Array(n);
+  for(let i=0;i<n;i++){I[i]=(bytes[2*i]-127.4)/128;Q[i]=(bytes[2*i+1]-127.4)/128;}
+  let ci,cq;
+  [ci,cq]=dsp.s1.proc(I,Q,n);
+  // spectrum feed
+  if(ci.length>=FFTN){
+    fftRe.set(ci.subarray(0,FFTN));fftIm.set(cq.subarray(0,FFTN));
+    fft(fftRe,fftIm);
+    for(let i=0;i<FFTN;i++){
+      const k=(i+FFTN/2)%FFTN;
+      const p=fftRe[k]*fftRe[k]+fftIm[k]*fftIm[k];
+      const db=10*Math.log10(p/(FFTN*FFTN)+1e-12);
+      specDb[i]=specDb[i]*0.7+db*0.3;
+    }
+  }
+  if(dsp.mode!=='WFM')[ci,cq]=dsp.s2.proc(ci,cq,ci.length);
+  // power / squelch
+  let pw=0;
+  for(let i=0;i<ci.length;i++)pw+=ci[i]*ci[i]+cq[i]*cq[i];
+  if(ci.length){
+    const db=10*Math.log10(pw/ci.length+1e-12);
+    sigDb=sigDb*0.6+db*0.4;
+  }
+  // demod
+  let audio;
+  if(dsp.mode==='AM'){
+    const m=new Float32Array(ci.length);
+    for(let i=0;i<ci.length;i++){
+      const mag=Math.sqrt(ci[i]*ci[i]+cq[i]*cq[i]);
+      dsp.dc+=0.002*(mag-dsp.dc);
+      m[i]=(mag-dsp.dc)*3;
+    }
+    audio=dsp.aud.proc(m);
+  }else{
+    const dem=new Float32Array(ci.length);
+    const gain=dsp.mode==='WFM'?0.6:1.4;
+    for(let i=0;i<ci.length;i++){
+      const re=ci[i]*dsp.pi+cq[i]*dsp.pq;
+      const im=cq[i]*dsp.pi-ci[i]*dsp.pq;
+      dem[i]=Math.atan2(im,re)/Math.PI*gain;
+      dsp.pi=ci[i];dsp.pq=cq[i];
+    }
+    audio=dsp.aud.proc(dem);
+    for(let i=0;i<audio.length;i++){dsp.de+=0.25*(audio[i]-dsp.de);audio[i]=dsp.de;}
+  }
+  // squelch gate + record
+  const now=performance.now();
+  const above=sigDb>sq;
+  if(above)lastAbove=now;
+  const shouldOpen=above||(now-lastAbove<250);
+  if(shouldOpen&&!gateOpen){gateOpen=true;recStart=now;recBuf=[];}
+  if(!shouldOpen&&gateOpen){gateOpen=false;finishRec(now);}
+  const step=(shouldOpen?1:0);
+  for(let i=0;i<audio.length;i++){
+    gateT+=(step-gateT)*0.004;
+    audio[i]*=gateT;
+  }
+  if(gateOpen&&document.getElementById('recC').checked)recBuf.push(audio.slice());
+  // push to audio ring, resample 64k → ctx rate
+  if(actx&&ring){
+    const ratio=CHRATE/actx.sampleRate;
+    if(!dsp.rs)dsp.rs=0;
+    let pos=dsp.rs;
+    while(pos<audio.length-1){
+      const i0=Math.floor(pos),fr=pos-i0;
+      const s=audio[i0]*(1-fr)+audio[i0+1]*fr;
+      ring[ringW%ring.length]=s;ringW++;
+      pos+=ratio;
+    }
+    dsp.rs=pos-audio.length+1;if(dsp.rs<0)dsp.rs=0;
+  }
+}
+
+/* ════════ recording → WAV ════════ */
+function finishRec(now){
+  const dur=(now-recStart)/1000;
+  if(dur<0.4||!recBuf.length){recBuf=[];return;}
+  let len=0;for(const b of recBuf)len+=b.length;
+  const all=new Float32Array(len);let o=0;
+  for(const b of recBuf){all.set(b,o);o+=b.length;}
+  recBuf=[];
+  const wav=makeWav(all,CHRATE);
+  txN++;
+  const t=new Date();
+  const tx={id:txN,url:URL.createObjectURL(wav),time:t.toLocaleTimeString(),
+    dur:dur.toFixed(1),ch:channels[curCh]?channels[curCh].n:'?'};
+  txs.unshift(tx);
+  renderTx(tx);
+}
+function makeWav(f32,rate){
+  const n=f32.length,buf=new ArrayBuffer(44+n*2),v=new DataView(buf);
+  const ws=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  ws(0,'RIFF');v.setUint32(4,36+n*2,true);ws(8,'WAVE');ws(12,'fmt ');
+  v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,rate,true);v.setUint32(28,rate*2,true);v.setUint16(32,2,true);
+  v.setUint16(34,16,true);ws(36,'data');v.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++){
+    let s=Math.max(-1,Math.min(1,f32[i]));
+    v.setInt16(44+i*2,s*32767,true);
+  }
+  return new Blob([buf],{type:'audio/wav'});
+}
+
+/* ════════ connect / stream ════════ */
+async function toggleConnect(){
+  if(streaming){await disconnect();return;}
+  if(!navigator.usb){showBanner('WebUSB not available — open this file in Chrome or Edge.');return;}
+  try{
+    usb=await navigator.usb.requestDevice({filters:[
+      {vendorId:0x0bda,productId:0x2838},{vendorId:0x0bda,productId:0x2832}]});
+    await usb.open();
+    if(usb.configuration===null)await usb.selectConfiguration(1);
+    await usb.claimInterface(0);
+    rtl=new RTL(usb);
+    stat('initializing RTL2832U…');
+    await rtl.wr(USBB,USB_SYSCTL,0x09,1).catch(()=>{});
+    await rtl.initBaseband();
+    // probe tuner
+    await rtl.rep(true);
+    let addr=R820T_ADDR;
+    let id=0;
+    try{await rtl.i2cW(addr,[0x00]);id=bitrev((await rtl.i2cR(addr,1))[0]);}catch(e){}
+    if(id!==0x69){
+      addr=R828D_ADDR;
+      try{await rtl.i2cW(addr,[0x00]);id=bitrev((await rtl.i2cR(addr,1))[0]);}catch(e){}
+    }
+    if(id!==0x69){await rtl.rep(false);throw new Error('R820T/R860 tuner not detected (got 0x'+id.toString(16)+'). Is this an RTL-SDR?');}
+    // R82xx demod config
+    await rtl.rep(false);
+    await rtl.dmW(1,0xb1,0x1a,1);
+    await rtl.dmW(0,0x08,0x4d,1);
+    await rtl.setIF(IF_FREQ);
+    await rtl.dmW(1,0x15,0x01,1);
+    tuner=new R820T(rtl,addr);
+    stat('initializing tuner…');
+    await rtl.rep(true);await tuner.init();await rtl.rep(false);
+    await rtl.setRate(FS);
+    await applyGain();
+    // audio
+    actx=new (window.AudioContext||window.webkitAudioContext)();
+    await actx.resume();
+    ring=new Float32Array(actx.sampleRate);ringW=0;ringR=0;
+    const node=actx.createScriptProcessor(4096,0,1);
+    node.onaudioprocess=e=>{
+      const out=e.outputBuffer.getChannelData(0);
+      for(let i=0;i<out.length;i++){
+        out[i]=(ringR<ringW)?ring[ringR%ring.length]*vol:0;
+        if(ringR<ringW)ringR++;
+      }
+      if(ringW-ringR>actx.sampleRate/2)ringR=ringW-4096; // catch up
+    };
+    node.connect(actx.destination);
+    await tuneCh(curCh);
+    await rtl.resetBuf();
+    streaming=true;
+    document.getElementById('connBtn').className='connect-btn on';
+    document.getElementById('connBtn').textContent='✅ Connected';
+    document.getElementById('hdot').className='dot on';
+    document.getElementById('scanBtn').disabled=false;
+    stat('streaming @ '+(FS/1e6)+' Msps — tuner 0x'+addr.toString(16));
+    readLoop();
+    uiLoop();
+  }catch(e){
+    console.error(e);
+    showBanner('Connect failed: '+e.message+' — On Windows, install WinUSB with Zadig. On Android, use an OTG adapter.');
+    try{if(usb)await usb.close();}catch(_){}
+    usb=null;
+  }
+}
+async function disconnect(){
+  streaming=false;scanOn=false;updateScanBtn();
+  try{if(usb)await usb.close();}catch(e){}
+  try{if(actx)await actx.close();}catch(e){}
+  usb=null;actx=null;
+  document.getElementById('connBtn').className='connect-btn';
+  document.getElementById('connBtn').textContent='🔌 Connect RTL-SDR';
+  document.getElementById('hdot').className='dot';
+  document.getElementById('scanBtn').disabled=true;
+  document.getElementById('vfoName').textContent='Not connected';
+  stat('idle');
+}
+async function readLoop(){
+  while(streaming){
+    try{
+      const r=await usb.transferIn(1,65536);
+      if(r.status==='stall'){await usb.clearHalt('in',1);continue;}
+      if(r.data&&r.data.byteLength)processIQ(new Uint8Array(r.data.buffer));
+    }catch(e){
+      if(streaming){showBanner('USB stream error: '+e.message);await disconnect();}
+      break;
+    }
+  }
+}
+
+/* ════════ tuning / channels ════════ */
+async function tuneCh(i){
+  curCh=i;
+  const ch=channels[i];
+  dsp=buildDsp(ch.m);
+  sigDb=-120;gateOpen=false;gateT=0;recBuf=[];
+  document.getElementById('vfoFreq').innerHTML=ch.f.toFixed(4)+'<small> MHz</small>';
+  document.getElementById('vfoName').textContent=ch.n;
+  document.getElementById('vfoMode').textContent=ch.m;
+  renderChannels();
+  if(rtl&&tuner){
+    await rtl.lock(async()=>{
+      await rtl.rep(true);
+      await tuner.setFreq(Math.round(ch.f*1e6));
+      await rtl.rep(false);
+    });
+  }
+}
+async function applyGain(){
+  if(!rtl||!tuner)return;
+  await rtl.lock(async()=>{
+    await rtl.rep(true);
+    if(agc)await tuner.gainAuto();else await tuner.gainManual(gainIdx);
+    await rtl.rep(false);
+  });
+}
+function renderChannels(){
+  const el=document.getElementById('chlist');
+  el.innerHTML='';
+  channels.forEach((c,i)=>{
+    const d=document.createElement('div');
+    d.className='ch'+(i===curCh?' sel':'')+(i===curCh&&gateOpen?' active-rx':'');
+    d.innerHTML=`<input type="checkbox" ${c.s?'checked':''} onclick="event.stopPropagation();channels[${i}].s=this.checked?1:0;saveCh()">
+      <span class="ch-name">${c.n}</span><span class="ch-mode">${c.m}</span>
+      <span class="ch-freq">${c.f.toFixed(4)}</span>
+      <button class="ch-del" onclick="event.stopPropagation();delCh(${i})">✕</button>`;
+    d.onclick=()=>{scanOn=false;updateScanBtn();tuneCh(i);};
+    el.appendChild(d);
+  });
+}
+function addChannel(){
+  const n=document.getElementById('afName').value.trim();
+  const f=parseFloat(document.getElementById('afFreq').value);
+  const m=document.getElementById('afMode').value;
+  if(!n||!isFinite(f)||f<24||f>1766){alert('Enter a name and a frequency in MHz (24–1766).');return;}
+  channels.push({n,f,m,s:1});saveCh();renderChannels();
+  document.getElementById('afName').value='';document.getElementById('afFreq').value='';
+}
+function delCh(i){
+  channels.splice(i,1);
+  if(curCh>=channels.length)curCh=0;
+  saveCh();renderChannels();
+}
+function saveCh(){localStorage.setItem('sdr.channels',JSON.stringify(channels));}
+
+/* ════════ scanner ════════ */
+function toggleScan(){
+  scanOn=!scanOn;
+  if(scanOn){scanState='tune';scanIdx=curCh;}
+  updateScanBtn();
+}
+function updateScanBtn(){
+  const b=document.getElementById('scanBtn');
+  b.className='btn'+(scanOn?' scan-on':'');
+  b.textContent=scanOn?'⏸ Scanning…':'▶ Scan';
+}
+setInterval(()=>{
+  if(!scanOn||!streaming)return;
+  const now=performance.now();
+  const list=channels.map((c,i)=>({c,i})).filter(x=>x.c.s);
+  if(!list.length){scanOn=false;updateScanBtn();return;}
+  if(scanState==='tune'){
+    let next=list.find(x=>x.i>scanIdx)||list[0];
+    scanIdx=next.i;
+    tuneCh(next.i);
+    scanState='settle';scanT=now;
+  }else if(scanState==='settle'){
+    if(now-scanT>220)scanState='check',scanT=now;
+  }else if(scanState==='check'){
+    if(sigDb>sq){scanState='hold';}
+    else if(now-scanT>120){scanState='tune';}
+  }else if(scanState==='hold'){
+    if(!gateOpen&&now-lastAbove>1200)scanState='tune';
+  }
+},30);
+
+/* ════════ transmissions UI ════════ */
+function renderTx(tx){
+  const empty=document.getElementById('emptyS');
+  if(empty)empty.remove();
+  document.getElementById('txCount').textContent=txs.length;
+  const d=document.createElement('div');
+  d.className='txc';d.id='txc'+tx.id;
+  d.innerHTML=`<div class="txn">#${tx.id}</div>
+    <div class="txi"><div class="txt1">${tx.time} — ${tx.ch}</div>
+    <div class="txt2"><span>${tx.dur}s</span></div></div>
+    <button class="cb" onclick="playTx(${tx.id})">▶</button>
+    <button class="cb" onclick="dlTx(${tx.id})">⬇</button>
+    <button class="cb" onclick="rmTx(${tx.id})" style="font-size:11px">✕</button>`;
+  const list=document.getElementById('txlist');
+  list.insertBefore(d,list.firstChild);
+}
+function playTx(id){
+  const tx=txs.find(t=>t.id===id);if(!tx)return;
+  if(curAudio){curAudio.pause();curAudio=null;}
+  document.querySelectorAll('.txc').forEach(c=>c.classList.remove('playing'));
+  document.getElementById('txc'+id).classList.add('playing');
+  curAudio=new Audio(tx.url);curAudio.play();
+  curAudio.onended=()=>document.getElementById('txc'+id)?.classList.remove('playing');
+}
+function dlTx(id){
+  const tx=txs.find(t=>t.id===id);if(!tx)return;
+  const a=document.createElement('a');
+  a.href=tx.url;a.download=`tx-${id}-${tx.ch.replace(/\W+/g,'')}-${tx.time.replace(/[: ]/g,'-')}.wav`;a.click();
+}
+function rmTx(id){
+  const i=txs.findIndex(t=>t.id===id);
+  if(i>=0){URL.revokeObjectURL(txs[i].url);txs.splice(i,1);}
+  document.getElementById('txc'+id)?.remove();
+  document.getElementById('txCount').textContent=txs.length;
+}
+function clearHist(){
+  if(!txs.length)return;
+  if(!confirm('Delete all recordings?'))return;
+  txs.forEach(t=>URL.revokeObjectURL(t.url));txs=[];
+  document.getElementById('txlist').innerHTML='';
+  document.getElementById('txCount').textContent='0';
+}
+
+/* ════════ UI loop ════════ */
+function uiLoop(){
+  if(!streaming)return;
+  requestAnimationFrame(uiLoop);
+  const pct=Math.max(0,Math.min(100,(sigDb+100)*1.4));
+  document.getElementById('meterFill').style.width=pct+'%';
+  document.getElementById('meterDb').textContent=sigDb.toFixed(1)+' dB';
+  const rd=document.getElementById('rxDot'),rt=document.getElementById('rxTxt');
+  if(gateOpen){rd.className='rx-dot rx';rt.className='rx-txt rx';rt.textContent='RECEIVING';}
+  else{rd.className='rx-dot';rt.className='rx-txt';rt.textContent=scanOn?'SCANNING':'MONITORING';}
+  drawSpec();
+}
+function drawSpec(){
+  const cv=document.getElementById('spec');
+  if(cv.width!==cv.clientWidth)cv.width=cv.clientWidth;
+  const ctx=cv.getContext('2d'),w=cv.width,h=cv.height;
+  ctx.fillStyle='#181e21';ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='#00e5ff';ctx.lineWidth=1;ctx.beginPath();
+  for(let x=0;x<w;x++){
+    const i=Math.floor(x/w*FFTN);
+    const y=h-((specDb[i]+90)/70)*h;
+    x===0?ctx.moveTo(x,y):ctx.lineTo(x,Math.max(0,Math.min(h,y)));
+  }
+  ctx.stroke();
+  ctx.strokeStyle='#ff6b3566';ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(w/2,0);ctx.lineTo(w/2,h);ctx.stroke();ctx.setLineDash([]);
+}
+
+/* ════════ controls ════════ */
+function setSq(v){sq=+v;document.getElementById('sqV').textContent=v+' dB';}
+function setVol(v){vol=v/100;document.getElementById('volV').textContent=v+'%';}
+function setGainIdx(v){gainIdx=+v;document.getElementById('gV').textContent='idx '+v;
+  if(!agc)applyGain();}
+function setAgc(on){agc=on;applyGain();}
+function stat(s){document.getElementById('stat').textContent=s;}
+function showBanner(msg){
+  const b=document.getElementById('banner');
+  b.textContent=msg;b.style.display='block';
+  setTimeout(()=>b.style.display='none',12000);
+}
+
+/* init */
+renderChannels();
+if(!navigator.usb)showBanner('WebUSB not detected — this app needs Chrome or Edge (PC or Android).');
+
+/* ════════ offline (service worker) ════════ */
+const pill=document.getElementById('offlinePill');
+function setPill(cls,txt){pill.className=cls;pill.textContent=txt;}
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    if(navigator.serviceWorker.controller)setPill('ready','✓ offline ready');
+    else setPill('','⏳ caching…');
+    navigator.serviceWorker.addEventListener('controllerchange',()=>setPill('ready','✓ offline ready'));
+    reg.addEventListener('updatefound',()=>setPill('','⏳ updating…'));
+  }).catch(()=>setPill('err','offline unavailable'));
+  navigator.serviceWorker.addEventListener('message',e=>{
+    if(e.data==='cached')setPill('ready','✓ offline ready');
+  });
+}else{
+  setPill('err','no offline support');
+}
+window.addEventListener('online',()=>{if(pill.className==='ready')setPill('ready','✓ offline ready');});
+window.addEventListener('offline',()=>{if(pill.className==='ready')setPill('ready','✓ running offline');});
+
+/* install prompt */
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();deferredPrompt=e;
+  document.getElementById('installBtn').style.display='inline-block';
+});
+function doInstall(){
+  if(!deferredPrompt)return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.finally(()=>{
+    deferredPrompt=null;
+    document.getElementById('installBtn').style.display='none';
+  });
+}
+window.addEventListener('appinstalled',()=>{
+  document.getElementById('installBtn').style.display='none';
+});
+</script>
+</body>
+</html>
