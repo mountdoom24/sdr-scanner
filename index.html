@@ -673,9 +673,13 @@ function makeWav(f32,rate){
 }
 
 /* ════════ connect / stream ════════ */
+let connecting=false;
 async function toggleConnect(){
+  if(connecting)return;                       // second click while opening → ignore
   if(streaming){await disconnect();return;}
   if(!navigator.usb){showBanner('WebUSB not available — open this file in Chrome or Edge.');return;}
+  connecting=true;
+  document.getElementById('connBtn').textContent='… opening';
   try{
     usb=await navigator.usb.requestDevice({filters:[
       {vendorId:0x0bda,productId:0x2838},{vendorId:0x0bda,productId:0x2832}]});
@@ -688,14 +692,17 @@ async function toggleConnect(){
     await rtl.initBaseband();
     // probe tuner
     await rtl.rep(true);
+    // Chip ID is 0x69. Depending on which read path the dongle answers on,
+    // the byte comes back either plain (0x69) or bit-reversed (0x96) — accept both.
+    const isTuner=b=>(b===0x69||b===0x96);
     let addr=R820T_ADDR;
     let id=0;
-    try{await rtl.i2cW(addr,[0x00]);id=bitrev((await rtl.i2cR(addr,1))[0]);}catch(e){}
-    if(id!==0x69){
+    try{await rtl.i2cW(addr,[0x00]);id=(await rtl.i2cR(addr,1))[0];}catch(e){}
+    if(!isTuner(id)){
       addr=R828D_ADDR;
-      try{await rtl.i2cW(addr,[0x00]);id=bitrev((await rtl.i2cR(addr,1))[0]);}catch(e){}
+      try{await rtl.i2cW(addr,[0x00]);id=(await rtl.i2cR(addr,1))[0];}catch(e){}
     }
-    if(id!==0x69){await rtl.rep(false);throw new Error('R820T/R860 tuner not detected (got 0x'+id.toString(16)+'). Is this an RTL-SDR?');}
+    if(!isTuner(id)){await rtl.rep(false);throw new Error('R820T/R860 tuner not detected (got 0x'+id.toString(16)+'). Is this an RTL-SDR?');}
     // R82xx demod config
     await rtl.rep(false);
     await rtl.dmW(1,0xb1,0x1a,1);
@@ -734,8 +741,15 @@ async function toggleConnect(){
   }catch(e){
     console.error(e);
     showBanner('Connect failed: '+e.message+' — On Windows, install WinUSB with Zadig. On Android, use an OTG adapter.');
+    stat('connect failed: '+e.message);
+    try{if(usb)await usb.releaseInterface(0);}catch(_){}
     try{if(usb)await usb.close();}catch(_){}
-    usb=null;
+    try{if(actx)await actx.close();}catch(_){}
+    usb=null;actx=null;
+    document.getElementById('connBtn').className='connect-btn';
+    document.getElementById('connBtn').textContent='🔌 Connect RTL-SDR';
+  }finally{
+    connecting=false;
   }
 }
 async function disconnect(){

@@ -1,7 +1,7 @@
 /* SDR Scanner — offline service worker
    Cache-first for the app shell so the whole thing runs with no wifi/data. */
 
-const CACHE = 'sdr-scanner-v1';
+const CACHE = 'sdr-scanner-v2';
 
 // Relative paths so this works from a GitHub Pages subdirectory
 // (e.g. https://user.github.io/sdr-scanner/) as well as a root domain.
